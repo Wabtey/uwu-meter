@@ -1,6 +1,6 @@
 [package]
 name = "uwu-meter"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -11,3 +11,7 @@ shuttle-runtime = "0.45.0"
 shuttle-serenity = "0.45.0"
 tokio = "1.26.0"
 tracing = "0.1.37"
+
+# save and load datas
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
