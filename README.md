@@ -7,7 +7,9 @@ id: 1248223080497811529
 ## Features
 
 - Count locally the number of uwu sent after deployement
-- Respond to `/uwumeeter` by giving the number of uwu sent.
+  - Save locally the leaderboard
+- `/uwumeeter` gives the number of uwu sent.
+- `/uwulead` gives the top 5 uwuer
 
 ## Permissions - 563224831331328
 
