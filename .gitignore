@@ -2,3 +2,6 @@
 Cargo.lock
 .shuttle-storage
 Secrets*.toml
+
+# we don't want leak
+data
