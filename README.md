@@ -7,7 +7,7 @@ id: 1248223080497811529
 ## Features
 
 - Count locally the number of uwu sent after deployement
-- Respond to `/uwu-count` by giving the number of uwu sent.
+- Respond to `/uwumeeter` by giving the number of uwu sent.
 
 ## Permissions - 563224831331328
 

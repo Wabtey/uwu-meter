@@ -24,7 +24,7 @@ impl EventHandler for Bot {
 
         let commands = vec![
             // CreateCommand::new("uwu").description("Say uwu"),
-            CreateCommand::new("uwu-count").description("Display the number of UwU pronounced"),
+            CreateCommand::new("uwumeeter").description("Display the number of UwU pronounced"),
         ];
 
         let commands = &self
@@ -40,7 +40,7 @@ impl EventHandler for Bot {
         if let Interaction::Command(command) = interaction {
             let response_content = match command.data.name.as_str() {
                 // "uwu" => "uwu".to_owned(),
-                "uwu-count" => format!("UwU meter: {}", self.uwu_count.load(Ordering::Relaxed)),
+                "uwumeeter" => format!("UwU meter: {}", self.uwu_count.load(Ordering::Relaxed)),
                 command => unreachable!("Unknown command: {}", command),
             };
 
