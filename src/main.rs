@@ -5,6 +5,7 @@ use std::sync::{
 };
 
 use anyhow::Context as _;
+use serenity::all::CreateAllowedMentions;
 use serenity::{
     all::{GuildId, Interaction, Message},
     async_trait,
@@ -97,7 +98,10 @@ impl EventHandler for Bot {
                 command => unreachable!("Unknown command: {}", command),
             };
 
-            let data = CreateInteractionResponseMessage::new().content(response_content);
+            let data = CreateInteractionResponseMessage::new()
+                .content(response_content)
+                // Avoid mention when tagging
+                .allowed_mentions(CreateAllowedMentions::new());
             let builder = CreateInteractionResponse::Message(data);
 
             if let Err(why) = command.create_response(&ctx.http, builder).await {
