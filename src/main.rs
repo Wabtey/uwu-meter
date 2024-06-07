@@ -52,6 +52,7 @@ impl EventHandler for Bot {
             commands::uwulead::register(),
             commands::uwume::register(),
             commands::uwureset::register(),
+            commands::uwuexport::register(),
         ];
 
         let global_commands = Command::set_global_commands(&ctx.http, commands).await;
@@ -66,6 +67,7 @@ impl EventHandler for Bot {
                 "uwulead" => Some(commands::uwulead::run(self).await),
                 "uwume" => Some(commands::uwume::run(self, command.user.id).await),
                 "uwureset" => Some(commands::uwureset::run(self, &command.data.options()).await),
+                "uwuexport" => Some(commands::uwuexport::run(self).await),
                 command => unreachable!("Unknown command: {}", command),
             };
 
