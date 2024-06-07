@@ -21,7 +21,6 @@ pub async fn run(bot: &Bot, options: &[ResolvedOption<'_>]) -> String {
     {
         match serde_json::from_str::<HashMap<UserId, usize>>(leaderboard_string) {
             Ok(new_leaderboard) => {
-                // TODO: reset data
                 let mut leaderboard = bot.leaderboard.lock().await;
                 *leaderboard = Leaderboard {
                     scores: new_leaderboard,
