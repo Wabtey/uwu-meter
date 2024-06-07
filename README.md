@@ -6,14 +6,10 @@ id: 1248223080497811529
 
 ## Features
 
-- Count locally the number of uwu sent after deployement
-  - Save locally the leaderboard (ephemeral)
+- Count the number of uwu sent after deployement
+- The leaderboard and total is persistant accross bot restart
 - `/uwumeeter` gives the number of uwu sent.
 - `/uwulead` gives the top 5 uwuer
-
-### Future
-
-- save the leaderboard somewhere
 
 ## Permissions - 563224831331328
 
