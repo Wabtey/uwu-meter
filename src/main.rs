@@ -5,59 +5,41 @@ use std::sync::{
 };
 
 use anyhow::Context as _;
-use serenity::all::{Command, CreateAllowedMentions};
+use serde::{Deserialize, Serialize};
 use serenity::{
-    all::{Interaction, Message},
+    all::{Command, CreateAllowedMentions, Interaction, Message, UserId},
     async_trait,
-    builder::{CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage},
+    builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     model::gateway::Ready,
     prelude::*,
 };
+use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
-use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
+use tokio::sync::Mutex;
 use tracing::info;
+
+mod commands;
+
+#[derive(Serialize, Deserialize)]
+pub struct Leaderboard {
+    scores: HashMap<UserId, usize>,
+}
+impl Leaderboard {
+    fn new() -> Self {
+        Leaderboard {
+            scores: HashMap::new(),
+        }
+    }
+
+    fn update_score(&mut self, user: UserId, score: usize) {
+        *self.scores.entry(user).or_insert(0) += score;
+    }
+}
 
 struct Bot {
     uwu_count: Arc<AtomicUsize>,
-    leaderboard: Arc<Mutex<HashMap<String, usize>>>,
-}
-
-impl Bot {
-    async fn save_data(&self) -> anyhow::Result<()> {
-        let uwu_count = self.uwu_count.load(Ordering::Relaxed);
-        let leaderboard = self.leaderboard.lock().await;
-
-        let data = serde_json::json!({
-            "uwu_count": uwu_count,
-            "leaderboard": *leaderboard
-        });
-
-        let mut file = fs::File::create("data/uwu.json").await?;
-        file.write_all(data.to_string().as_bytes()).await?;
-        Ok(())
-    }
-
-    async fn load_data(&self) -> anyhow::Result<()> {
-        let data = fs::read_to_string("data/uwu.json")
-            .await
-            .unwrap_or_else(|_| "{}".to_string());
-        let json: serde_json::Value = serde_json::from_str(&data)?;
-
-        if let Some(count) = json["uwu_count"].as_u64() {
-            self.uwu_count.store(count as usize, Ordering::Relaxed);
-        }
-
-        if let Some(leaderboard) = json["leaderboard"].as_object() {
-            let mut leaderboard_lock = self.leaderboard.lock().await;
-            for (key, value) in leaderboard {
-                if let Some(count) = value.as_u64() {
-                    leaderboard_lock.insert(key.clone(), count as usize);
-                }
-            }
-        }
-
-        Ok(())
-    }
+    leaderboard: Arc<Mutex<Leaderboard>>,
+    persist: PersistInstance,
 }
 
 #[async_trait]
@@ -66,43 +48,37 @@ impl EventHandler for Bot {
         info!("{} is connected!", ready.user.name);
 
         let commands = vec![
-            CreateCommand::new("uwumeeter").description("Display the number of UwU pronounced"),
-            CreateCommand::new("uwulead").description("Display the UwU leaderboard"),
+            commands::uwumeeter::register(),
+            commands::uwulead::register(),
+            commands::uwume::register(),
+            commands::uwureset::register(),
         ];
 
-        let commands = Command::set_global_commands(&ctx.http, commands)
-            .await
-            .unwrap();
+        let global_commands = Command::set_global_commands(&ctx.http, commands).await;
 
-        info!("Registered commands: {:#?}", commands);
+        info!("Registered commands: {:#?}", global_commands);
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
-            let response_content = match command.data.name.as_str() {
-                "uwumeeter" => format!("UwU meter: {}", self.uwu_count.load(Ordering::Relaxed)),
-                "uwulead" => {
-                    let leaderboard = self.leaderboard.lock().await;
-                    let mut sorted_leaderboard: Vec<_> = leaderboard.iter().collect();
-                    sorted_leaderboard.sort_by(|a, b| b.1.cmp(a.1));
-
-                    let mut response = String::from("UwU Leaderboard:\n");
-                    for (user_id, count) in sorted_leaderboard.iter().take(10) {
-                        response.push_str(&format!("<@{}>: {}\n", user_id, count));
-                    }
-                    response
-                }
+            let content = match command.data.name.as_str() {
+                "uwumeeter" => Some(commands::uwumeeter::run(self).await),
+                "uwulead" => Some(commands::uwulead::run(self).await),
+                "uwume" => Some(commands::uwume::run(self, command.user.id).await),
+                "uwureset" => Some(commands::uwureset::run(self, &command.data.options()).await),
                 command => unreachable!("Unknown command: {}", command),
             };
 
-            let data = CreateInteractionResponseMessage::new()
-                .content(response_content)
-                // Avoid mention when tagging
-                .allowed_mentions(CreateAllowedMentions::new());
-            let builder = CreateInteractionResponse::Message(data);
+            if let Some(content) = content {
+                let data = CreateInteractionResponseMessage::new()
+                    .content(content)
+                    // Avoid mention when tagging
+                    .allowed_mentions(CreateAllowedMentions::new());
+                let builder = CreateInteractionResponse::Message(data);
 
-            if let Err(why) = command.create_response(&ctx.http, builder).await {
-                println!("Cannot respond to slash command: {why}");
+                if let Err(why) = command.create_response(&ctx.http, builder).await {
+                    println!("Cannot respond to slash command: {why}");
+                }
             }
         }
     }
@@ -110,12 +86,26 @@ impl EventHandler for Bot {
     async fn message(&self, _ctx: Context, msg: Message) {
         let content = msg.content.to_lowercase();
         if content.contains("uwu") && !msg.author.bot {
+            /* ------------------------------- Update UwU ------------------------------- */
             self.uwu_count.fetch_add(1, Ordering::Relaxed);
-            {
-                let mut leaderboard = self.leaderboard.lock().await;
-                *leaderboard.entry(msg.author.id.to_string()).or_insert(0) += 1;
-            }
-            self.save_data().await.expect("Failed to save data");
+
+            let mut leaderboard = self.leaderboard.lock().await;
+            leaderboard.update_score(msg.author.id, 1);
+            // info!(
+            //     "Leaderboard:\n{:#}",
+            //     serde_json::to_string(&leaderboard.scores).unwrap()
+            // );
+
+            /* -------------------------------- Save Uwu -------------------------------- */
+            let uwu_count = serde_json::to_string(&self.uwu_count.load(Ordering::Relaxed)).unwrap();
+            self.persist
+                .save("uwu_count", uwu_count.as_bytes())
+                .unwrap();
+
+            let leaderboard_data = serde_json::to_string(&*leaderboard).unwrap();
+            self.persist
+                .save("leaderboard", leaderboard_data.as_bytes())
+                .unwrap();
         }
     }
 }
@@ -123,30 +113,41 @@ impl EventHandler for Bot {
 #[shuttle_runtime::main]
 async fn serenity(
     #[shuttle_runtime::Secrets] secrets: SecretStore,
+    #[shuttle_persist::Persist] persist: PersistInstance,
 ) -> shuttle_serenity::ShuttleSerenity {
+    /* ------------------------- Persistant Leaderboard ------------------------- */
+    let leaderboard = if let Ok(data) = persist.load("leaderboard") {
+        let data_str = String::from_utf8(data).unwrap();
+        serde_json::from_str(&data_str).unwrap()
+    } else {
+        Leaderboard::new()
+    };
+    let uwu_count = if let Ok(data) = persist.load("uwu_count") {
+        let data_str = String::from_utf8(data).unwrap();
+        serde_json::from_str(&data_str).unwrap()
+    } else {
+        0
+    };
+    /* -------------------------------------------------------------------------- */
+
     // Get the discord token set in `Secrets.toml`
     let discord_token = secrets
         .get("DISCORD_TOKEN")
         .context("'DISCORD_TOKEN' was not found")?;
 
-    let client = get_client(&discord_token).await;
-    Ok(client.into())
-}
-
-pub async fn get_client(discord_token: &str) -> Client {
     // Set gateway intents, which decides what events the bot will be notified about.
     // Here we don't need any intents so empty
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     let bot = Bot {
-        uwu_count: Arc::new(AtomicUsize::new(0)),
-        leaderboard: Arc::new(Mutex::new(HashMap::new())),
+        uwu_count: Arc::new(AtomicUsize::new(uwu_count)),
+        leaderboard: Arc::new(Mutex::new(leaderboard)),
+        persist,
     };
-
-    bot.load_data().await.expect("Failed to load data");
-
-    Client::builder(discord_token, intents)
+    let client = Client::builder(discord_token, intents)
         .event_handler(bot)
         .await
-        .expect("Err creating client")
+        .expect("Err creating client");
+
+    Ok(client.into())
 }
