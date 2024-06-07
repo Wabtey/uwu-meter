@@ -13,6 +13,7 @@ id: 1248223080497811529
 - `/uwume` gives your personal uwu count
 - `/uwureset {1}` needs a string argument (the new leaderboard on deserialized json) and will reset both the total of uwu and the leaderboard with the given leaderboard.
   Example: `/uwureset {"1234":4, "5678":2}`
+- `/uwuexport` exports the leaderboard to the chat (hashMap being serialized to json to string)
 
 ## Permissions - 563224831331328
 
