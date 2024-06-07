@@ -164,10 +164,10 @@ impl EventHandler for Bot {
 
             let mut leaderboard = self.leaderboard.lock().await;
             leaderboard.update_score(msg.author.id, 1);
-            println!(
-                "Leaderboard:\n{:#}",
-                serde_json::to_string(&leaderboard.scores).unwrap()
-            );
+            // info!(
+            //     "Leaderboard:\n{:#}",
+            //     serde_json::to_string(&leaderboard.scores).unwrap()
+            // );
 
             /* -------------------------------- Save Uwu -------------------------------- */
             let uwu_count = serde_json::to_string(&self.uwu_count.load(Ordering::Relaxed)).unwrap();
