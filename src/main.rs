@@ -6,13 +6,10 @@ use std::sync::{
 
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
-use serenity::all::{
-    Command, CreateAllowedMentions, CreateCommandOption, ResolvedOption, ResolvedValue, UserId,
-};
 use serenity::{
-    all::{Interaction, Message},
+    all::{Command, CreateAllowedMentions, Interaction, Message, UserId},
     async_trait,
-    builder::{CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage},
+    builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     model::gateway::Ready,
     prelude::*,
 };
@@ -20,6 +17,8 @@ use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use tokio::sync::Mutex;
 use tracing::info;
+
+mod commands;
 
 #[derive(Serialize, Deserialize)]
 pub struct Leaderboard {
@@ -49,21 +48,10 @@ impl EventHandler for Bot {
         info!("{} is connected!", ready.user.name);
 
         let commands = vec![
-            CreateCommand::new("uwumeeter").description("Display the total of UwU"),
-            CreateCommand::new("uwulead").description("Display the UwU leaderboard"),
-            CreateCommand::new("uwume").description("Display your UwU count"),
-            CreateCommand::new("uwureset")
-                .description("Reset the current ladder with the given leaderbord (JSON)")
-                .add_option(
-                    CreateCommandOption::new(
-                        // serenity::all::CommandOptionType::Attachment,
-                        serenity::all::CommandOptionType::String,
-                        "newleaderboard",
-                        "A JSON file. Must be in this structure: {\"1234\":4, \"5678\":2}",
-                        //{\"leaderboard\":{\"1234\":4, \"5678\":2},\"uwu_count\":6}
-                    )
-                    .required(true),
-                ),
+            commands::uwumeeter::register(),
+            commands::uwulead::register(),
+            commands::uwume::register(),
+            commands::uwureset::register(),
         ];
 
         let global_commands = Command::set_global_commands(&ctx.http, commands).await;
@@ -73,88 +61,24 @@ impl EventHandler for Bot {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
-            let response_content = match command.data.name.as_str() {
-                "uwumeeter" => format!("UwU meter: {}", self.uwu_count.load(Ordering::Relaxed)),
-                "uwulead" => {
-                    let leaderboard = self.leaderboard.lock().await;
-                    let mut sorted_leaderboard: Vec<_> = leaderboard.scores.iter().collect();
-                    sorted_leaderboard.sort_by(|a, b| b.1.cmp(a.1));
-
-                    let mut response = String::from("UwU Leaderboard:\n");
-                    for (user_id, count) in sorted_leaderboard.iter().take(10) {
-                        response.push_str(&format!("<@{}>: {}\n", user_id, count));
-                    }
-                    response
-                }
-                "uwume" => {
-                    let leaderboard = self.leaderboard.lock().await;
-                    let user_id = command.user.id;
-                    let count = leaderboard.scores.get(&user_id).unwrap_or(&0);
-
-                    format!("<@{}>: {}\n", user_id, *count)
-                }
-                "uwureset" => {
-                    // or integration perm
-                    // if !permissions.administrator() {
-                    //     "You must be an admin to run this command.".to_string()
-                    // }
-
-                    if let Some(ResolvedOption {
-                        value: ResolvedValue::String(leaderboard_string),
-                        ..
-                    }) = &command.data.options().first()
-                    {
-                        match serde_json::from_str::<HashMap<UserId, usize>>(leaderboard_string) {
-                            Ok(new_leaderboard) => {
-                                // TODO: reset data
-                                let mut leaderboard = self.leaderboard.lock().await;
-                                *leaderboard = Leaderboard {
-                                    scores: new_leaderboard,
-                                };
-
-                                let mut new_total = 0;
-                                for (_, uwu_user_count) in
-                                    leaderboard.scores.iter().collect::<Vec<(_, &usize)>>()
-                                {
-                                    new_total += uwu_user_count;
-                                }
-
-                                self.uwu_count.store(new_total, Ordering::Relaxed);
-
-                                /* ----------------------------- Save to persist ---------------------------- */
-                                let uwu_count = serde_json::to_string(&new_total).unwrap();
-                                self.persist
-                                    .save("uwu_count", uwu_count.as_bytes())
-                                    .unwrap();
-
-                                let leaderboard_data =
-                                    serde_json::to_string(&*leaderboard).unwrap();
-                                self.persist
-                                    .save("leaderboard", leaderboard_data.as_bytes())
-                                    .unwrap();
-                                /* -------------------------------------------------------------------------- */
-                                format!(
-                                    "New Uwu meeter: {}",
-                                    self.uwu_count.load(Ordering::Relaxed)
-                                )
-                            }
-                            Err(_) => "Error parsing the leaderboard. Nothing changed.".to_string(),
-                        }
-                    } else {
-                        "The leaderboard must be a string in the command's argument. Nothing changed.".to_string()
-                    }
-                }
+            let content = match command.data.name.as_str() {
+                "uwumeeter" => Some(commands::uwumeeter::run(self).await),
+                "uwulead" => Some(commands::uwulead::run(self).await),
+                "uwume" => Some(commands::uwume::run(self, command.user.id).await),
+                "uwureset" => Some(commands::uwureset::run(self, &command.data.options()).await),
                 command => unreachable!("Unknown command: {}", command),
             };
 
-            let data = CreateInteractionResponseMessage::new()
-                .content(response_content)
-                // Avoid mention when tagging
-                .allowed_mentions(CreateAllowedMentions::new());
-            let builder = CreateInteractionResponse::Message(data);
+            if let Some(content) = content {
+                let data = CreateInteractionResponseMessage::new()
+                    .content(content)
+                    // Avoid mention when tagging
+                    .allowed_mentions(CreateAllowedMentions::new());
+                let builder = CreateInteractionResponse::Message(data);
 
-            if let Err(why) = command.create_response(&ctx.http, builder).await {
-                println!("Cannot respond to slash command: {why}");
+                if let Err(why) = command.create_response(&ctx.http, builder).await {
+                    println!("Cannot respond to slash command: {why}");
+                }
             }
         }
     }
