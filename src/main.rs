@@ -6,7 +6,9 @@ use std::sync::{
 
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
-use serenity::all::{Command, CreateAllowedMentions, CreateCommandOption, UserId};
+use serenity::all::{
+    Command, CreateAllowedMentions, CreateCommandOption, ResolvedOption, ResolvedValue, UserId,
+};
 use serenity::{
     all::{Interaction, Message},
     async_trait,
@@ -52,20 +54,21 @@ impl EventHandler for Bot {
             CreateCommand::new("uwume").description("Display your UwU count"),
             CreateCommand::new("uwureset")
                 .description("Reset the current ladder with the given leaderbord (JSON)")
-                .add_option(CreateCommandOption::new(
-                    // serenity::all::CommandOptionType::Attachment,
-                    serenity::all::CommandOptionType::String,
-                    "New Leaderboard",
-                    "A JSON file. Must be in this structure: {\"1234\":4, \"5678\":2}",
-                    //{\"leaderboard\":{\"1234\":4, \"5678\":2},\"uwu_count\":6}
-                )),
+                .add_option(
+                    CreateCommandOption::new(
+                        // serenity::all::CommandOptionType::Attachment,
+                        serenity::all::CommandOptionType::String,
+                        "newleaderboard",
+                        "A JSON file. Must be in this structure: {\"1234\":4, \"5678\":2}",
+                        //{\"leaderboard\":{\"1234\":4, \"5678\":2},\"uwu_count\":6}
+                    )
+                    .required(true),
+                ),
         ];
 
-        let commands = Command::set_global_commands(&ctx.http, commands)
-            .await
-            .unwrap();
+        let global_commands = Command::set_global_commands(&ctx.http, commands).await;
 
-        info!("Registered commands: {:#?}", commands);
+        info!("Registered commands: {:#?}", global_commands);
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -90,33 +93,32 @@ impl EventHandler for Bot {
 
                     format!("<@{}>: {}\n", user_id, *count)
                 }
-                "uwureset" => {                
+                "uwureset" => {
                     // or integration perm
                     // if !permissions.administrator() {
                     //     "You must be an admin to run this command.".to_string()
                     // }
 
-                    let mut leaderboard = None;
-                    for option in &command.data.options {
-                        if option.name == "New Leaderboard" {
-                            // let leaderboard = option.value.as_attachment_id();
-                            leaderboard = option.value.as_str();
-                        }
-                    }
-
-                    match leaderboard {
-                        None => "The leaderboard must be a string in the command's argument. Nothing changed.".to_string(),
-                        Some(leaderboard_string) => match serde_json::from_str::<HashMap<UserId, usize>>(leaderboard_string) {
+                    if let Some(ResolvedOption {
+                        value: ResolvedValue::String(leaderboard_string),
+                        ..
+                    }) = &command.data.options().first()
+                    {
+                        match serde_json::from_str::<HashMap<UserId, usize>>(leaderboard_string) {
                             Ok(new_leaderboard) => {
                                 // TODO: reset data
                                 let mut leaderboard = self.leaderboard.lock().await;
-                                *leaderboard = Leaderboard {scores: new_leaderboard};
+                                *leaderboard = Leaderboard {
+                                    scores: new_leaderboard,
+                                };
 
                                 let mut new_total = 0;
-                                for (_, uwu_user_count) in leaderboard.scores.iter().collect::<Vec<(_, &usize)>>() {
+                                for (_, uwu_user_count) in
+                                    leaderboard.scores.iter().collect::<Vec<(_, &usize)>>()
+                                {
                                     new_total += uwu_user_count;
                                 }
-                                
+
                                 self.uwu_count.store(new_total, Ordering::Relaxed);
 
                                 /* ----------------------------- Save to persist ---------------------------- */
@@ -125,7 +127,8 @@ impl EventHandler for Bot {
                                     .save("uwu_count", uwu_count.as_bytes())
                                     .unwrap();
 
-                                let leaderboard_data = serde_json::to_string(&*leaderboard).unwrap();
+                                let leaderboard_data =
+                                    serde_json::to_string(&*leaderboard).unwrap();
                                 self.persist
                                     .save("leaderboard", leaderboard_data.as_bytes())
                                     .unwrap();
@@ -135,10 +138,10 @@ impl EventHandler for Bot {
                                     self.uwu_count.load(Ordering::Relaxed)
                                 )
                             }
-                            Err(_) => {
-                                "Error parsing the leaderboard. Nothing changed.".to_string()
-                            }
+                            Err(_) => "Error parsing the leaderboard. Nothing changed.".to_string(),
                         }
+                    } else {
+                        "The leaderboard must be a string in the command's argument. Nothing changed.".to_string()
                     }
                 }
                 command => unreachable!("Unknown command: {}", command),
