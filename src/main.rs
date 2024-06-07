@@ -5,9 +5,9 @@ use std::sync::{
 };
 
 use anyhow::Context as _;
-use serenity::all::CreateAllowedMentions;
+use serenity::all::{Command, CreateAllowedMentions};
 use serenity::{
-    all::{GuildId, Interaction, Message},
+    all::{Interaction, Message},
     async_trait,
     builder::{CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage},
     model::gateway::Ready,
@@ -18,7 +18,6 @@ use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 use tracing::info;
 
 struct Bot {
-    discord_guild_id: GuildId,
     uwu_count: Arc<AtomicUsize>,
     leaderboard: Arc<Mutex<HashMap<String, usize>>>,
 }
@@ -71,9 +70,7 @@ impl EventHandler for Bot {
             CreateCommand::new("uwulead").description("Display the UwU leaderboard"),
         ];
 
-        let commands = &self
-            .discord_guild_id
-            .set_commands(&ctx.http, commands)
+        let commands = Command::set_global_commands(&ctx.http, commands)
             .await
             .unwrap();
 
@@ -132,21 +129,16 @@ async fn serenity(
         .get("DISCORD_TOKEN")
         .context("'DISCORD_TOKEN' was not found")?;
 
-    let discord_guild_id = secrets
-        .get("DISCORD_GUILD_ID")
-        .context("'DISCORD_GUILD_ID' was not found")?;
-
-    let client = get_client(&discord_token, discord_guild_id.parse().unwrap()).await;
+    let client = get_client(&discord_token).await;
     Ok(client.into())
 }
 
-pub async fn get_client(discord_token: &str, discord_guild_id: u64) -> Client {
+pub async fn get_client(discord_token: &str) -> Client {
     // Set gateway intents, which decides what events the bot will be notified about.
     // Here we don't need any intents so empty
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     let bot = Bot {
-        discord_guild_id: GuildId::new(discord_guild_id),
         uwu_count: Arc::new(AtomicUsize::new(0)),
         leaderboard: Arc::new(Mutex::new(HashMap::new())),
     };
