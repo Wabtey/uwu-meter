@@ -16,7 +16,7 @@ use serenity::{
 use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{error, info};
 
 mod commands;
 
@@ -79,7 +79,7 @@ impl EventHandler for Bot {
                 let builder = CreateInteractionResponse::Message(data);
 
                 if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    println!("Cannot respond to slash command: {why}");
+                    error!("Cannot respond to slash command: {why}");
                 }
             }
         }

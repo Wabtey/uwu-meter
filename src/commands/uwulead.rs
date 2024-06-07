@@ -8,7 +8,7 @@ pub async fn run(bot: &Bot) -> String {
     sorted_leaderboard.sort_by(|a, b| b.1.cmp(a.1));
 
     let mut response = String::from("UwU Leaderboard:\n");
-    for (user_id, count) in sorted_leaderboard.iter().take(10) {
+    for (user_id, count) in sorted_leaderboard.iter().take(5) {
         response.push_str(&format!("<@{}>: {}\n", user_id, count));
     }
     response
