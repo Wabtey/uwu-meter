@@ -6,8 +6,8 @@ id: 1248223080497811529 -->
 
 ## Features
 
-- Count the number of uwu sent after deployement
-- The leaderboard and total is persistant accross bot restart
+- Count the number of uwu sent after deployment
+- The leaderboard and total is persistent across bot restart
 - `/uwumeeter` gives the number of uwu sent.
 - `/uwulead` gives the top 5 uwuer
 - `/uwume` gives your personal uwu count
