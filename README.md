@@ -24,7 +24,7 @@ id: 1248223080497811529 -->
 
 ## Contribute
 
-- put your discord token in `Secrets.toml`, as `DISCORD_TOKEN`
+- put the discord bot's token in `Secrets.toml`, as `DISCORD_TOKEN`
 - change in `.env` the `DATABASE_URL`
 - run
   - `sudo pacman -S postgresql`
