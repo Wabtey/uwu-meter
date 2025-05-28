@@ -5,3 +5,5 @@ Secrets*.toml
 
 # we don't want leak
 data
+.shuttle*
+.env

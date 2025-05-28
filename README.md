@@ -21,3 +21,20 @@ id: 1248223080497811529 -->
 - Send Messages
 - Send Messages in Threads
 - Create Polls (for future uwu/uwu polls)
+
+## Contribute
+
+- put your discord token in `Secrets.toml`, as `DISCORD_TOKEN`
+- change in `.env` the `DATABASE_URL`
+- run
+  - `sudo pacman -S postgresql`
+  - `sudo su - postgres`
+    - `createuser --interactive` (superuser, will be used as your `DATABASE_URL`)
+    - `exit`
+  - `sudo systemctl start postgresql`
+  - `sudo su - postgres`
+    - `createdb uwu-meter`
+  - `cargo install sqlx-cli --no-default-features --features native-tls,postgres`
+  - `sqlx database create`
+  - `sqlx migration run`
+  - `cargo sqlx prepare`

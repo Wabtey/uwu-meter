@@ -34,13 +34,26 @@ pub async fn run(bot: &Bot, options: &[ResolvedOption<'_>]) -> String {
                 bot.uwu_count.store(new_total, Ordering::Relaxed);
 
                 /* ----------------------------- Save to persist ---------------------------- */
-                let uwu_count = serde_json::to_string(&new_total).unwrap();
-                bot.persist.save("uwu_count", uwu_count.as_bytes()).unwrap();
+                sqlx::query!(
+                    "INSERT INTO uwu_data (key, value) VALUES ($1, $2) 
+                     ON CONFLICT (key) DO UPDATE SET value = $2",
+                    "uwu_count",
+                    serde_json::to_string(&new_total).unwrap()
+                )
+                .execute(&bot.pool)
+                .await
+                .unwrap();
 
                 let leaderboard_data = serde_json::to_string(&*leaderboard).unwrap();
-                bot.persist
-                    .save("leaderboard", leaderboard_data.as_bytes())
-                    .unwrap();
+                sqlx::query!(
+                    "INSERT INTO uwu_data (key, value) VALUES ($1, $2) 
+                     ON CONFLICT (key) DO UPDATE SET value = $2",
+                    "leaderboard",
+                    leaderboard_data
+                )
+                .execute(&bot.pool)
+                .await
+                .unwrap();
                 /* -------------------------------------------------------------------------- */
                 format!("New Uwu meeter: {}", bot.uwu_count.load(Ordering::Relaxed))
             }
