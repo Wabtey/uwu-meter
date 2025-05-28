@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS uwu_data (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);

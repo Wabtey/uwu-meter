@@ -13,8 +13,8 @@ use serenity::{
     model::gateway::Ready,
     prelude::*,
 };
-use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
+use sqlx::PgPool;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
@@ -39,7 +39,7 @@ impl Leaderboard {
 struct Bot {
     uwu_count: Arc<AtomicUsize>,
     leaderboard: Arc<Mutex<Leaderboard>>,
-    persist: PersistInstance,
+    pool: PgPool,
 }
 
 #[async_trait]
@@ -99,15 +99,27 @@ impl EventHandler for Bot {
             // );
 
             /* -------------------------------- Save Uwu -------------------------------- */
-            let uwu_count = serde_json::to_string(&self.uwu_count.load(Ordering::Relaxed)).unwrap();
-            self.persist
-                .save("uwu_count", uwu_count.as_bytes())
-                .unwrap();
+            let uwu_count = self.uwu_count.load(Ordering::Relaxed);
+            sqlx::query!(
+                "INSERT INTO uwu_data (key, value) VALUES ($1, $2) 
+                 ON CONFLICT (key) DO UPDATE SET value = $2",
+                "uwu_count",
+                serde_json::to_string(&uwu_count).unwrap()
+            )
+            .execute(&self.pool)
+            .await
+            .unwrap();
 
             let leaderboard_data = serde_json::to_string(&*leaderboard).unwrap();
-            self.persist
-                .save("leaderboard", leaderboard_data.as_bytes())
-                .unwrap();
+            sqlx::query!(
+                "INSERT INTO uwu_data (key, value) VALUES ($1, $2) 
+                 ON CONFLICT (key) DO UPDATE SET value = $2",
+                "leaderboard",
+                leaderboard_data
+            )
+            .execute(&self.pool)
+            .await
+            .unwrap();
         }
     }
 }
@@ -115,23 +127,30 @@ impl EventHandler for Bot {
 #[shuttle_runtime::main]
 async fn serenity(
     #[shuttle_runtime::Secrets] secrets: SecretStore,
-    #[shuttle_persist::Persist] persist: PersistInstance,
+    #[shuttle_shared_db::Postgres] pool: PgPool,
 ) -> shuttle_serenity::ShuttleSerenity {
-    /* ------------------------- Persistant Leaderboard ------------------------- */
-    let leaderboard = if let Ok(data) = persist.load("leaderboard") {
-        let data_str = String::from_utf8(data).unwrap();
-        serde_json::from_str(&data_str).unwrap()
+    /* ----------------------------- Leaderboard DB ----------------------------- */
+    let leaderboard = if let Ok(row) =
+        sqlx::query!("SELECT value FROM uwu_data WHERE key = $1", "leaderboard")
+            .fetch_one(&pool)
+            .await
+    {
+        serde_json::from_str(&row.value).unwrap()
     } else {
         Leaderboard::new()
     };
-    let uwu_count = if let Ok(data) = persist.load("uwu_count") {
-        let data_str = String::from_utf8(data).unwrap();
-        serde_json::from_str(&data_str).unwrap()
+
+    let uwu_count = if let Ok(row) =
+        sqlx::query!("SELECT value FROM uwu_data WHERE key = $1", "uwu_count")
+            .fetch_one(&pool)
+            .await
+    {
+        serde_json::from_str(&row.value).unwrap()
     } else {
         0
     };
-    /* -------------------------------------------------------------------------- */
 
+    /* -------------------------DISCORD_TOKEN------------------------------------------------- */
     // Get the discord token set in `Secrets.toml`
     let discord_token = secrets
         .get("DISCORD_TOKEN")
@@ -144,8 +163,9 @@ async fn serenity(
     let bot = Bot {
         uwu_count: Arc::new(AtomicUsize::new(uwu_count)),
         leaderboard: Arc::new(Mutex::new(leaderboard)),
-        persist,
+        pool,
     };
+
     let client = Client::builder(discord_token, intents)
         .event_handler(bot)
         .await

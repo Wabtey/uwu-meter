@@ -6,8 +6,8 @@ id: 1248223080497811529 -->
 
 ## Features
 
-- Count the number of uwu sent after deployement
-- The leaderboard and total is persistant accross bot restart
+- Count the number of uwu sent after deployment
+- The leaderboard and total is persistent across bot restart
 - `/uwumeeter` gives the number of uwu sent.
 - `/uwulead` gives the top 5 uwuer
 - `/uwume` gives your personal uwu count
@@ -21,3 +21,20 @@ id: 1248223080497811529 -->
 - Send Messages
 - Send Messages in Threads
 - Create Polls (for future uwu/uwu polls)
+
+## Contribute
+
+- put the discord bot's token in `Secrets.toml`, as `DISCORD_TOKEN`
+- change in `.env` the `DATABASE_URL`
+- run
+  - `sudo pacman -S postgresql`
+  - `sudo su - postgres`
+    - `createuser --interactive` (superuser, will be used as your `DATABASE_URL`)
+    - `exit`
+  - `sudo systemctl start postgresql`
+  - `sudo su - postgres`
+    - `createdb uwu-meter`
+  - `cargo install sqlx-cli --no-default-features --features native-tls,postgres`
+  - `sqlx database create`
+  - `sqlx migration run`
+  - `cargo sqlx prepare`
